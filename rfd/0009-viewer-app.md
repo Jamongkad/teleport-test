@@ -86,6 +86,7 @@ Return codes for `/directory` endpoint
 * `200` success response
 * `401` unauthenticated response
 * `500` server error response
+* `404` for directory resource not found? Maybe I'm overthinking this as we can just return an empty `[]`. 
 
 
 ### Security
@@ -134,28 +135,57 @@ export default function useSession({session_id}){
 }
 ```
 
+```javascript
+//applying session management on successful login on Next.js
+const userService = new UserService();
+export default loginApiRoute(async (req, res) => {
+  const { username, password } = await req.body;
+
+  try {
+    const {
+      data
+    } = await userService.getByUsername({ username, password });
+
+    const user = { isLoggedIn: true };
+    req.session.user = user;
+    await req.session.save();
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}, sessionOptions);
+
+//logout route
+async function logoutApiRoute(req, res) {
+  req.session.destroy();
+  res.json({ isLoggedIn: false });
+}
+```
+
 So now whenever you need to use session ID on a particular page, you can grab it from this hook. Thus, you won't need to pass it as query parameters in your React app's routes. 
 
 
 #### 3. CSRF
-* CSRF is definitely a concern that we want to address with our app. A good solution is the use of CSRF Tokens. A good library to use, assuming you have a NodeJS and Express back end that interacts with your React client, is [csuf](https://www.npmjs.com/package/csurf). 
+* CSRF is definitely a concern that we want to address with our app. A good solution is the use of CSRF Tokens. A good library to use is [csurf](https://www.npmjs.com/package/csurf). 
 
-We can create an GET endpoint to fetch the generated CSRFToken from our Express backend. 
+We can create an GET endpoint to fetch the generated CSRFToken from our Next.js backend. 
 
 ```javascript
-const csrfProtection = csrf({
-  cookie: true
-});
-app.use(csrfProtection);
-app.get('/getCSRFToken', (req, res) => {
-  res.json({ CSRFToken: req.CSRFToken() });
-});
+// file: /pages/api/csrftoken
+import csurf from "csurf";
+export default (req, res) =>
+  new Promise((resolve, reject) => {
+    return csurf({ cookie: true })(req, res, (error, res) => {
+      if (error) reject(error);
+      return resolve(res);
+    });
+  });
 ```
 
 Then have our client app fetch the token and attach it to every request! 
 ```javascript
 const getCSRFToken = async () => {
-    const response = await axios.get('/getCSRFToken');
+    const response = await axios.get('/api/getcsrftoken');
     axios.defaults.headers.post['X-CSRF-Token'] = response.data.CSRFToken;
  };
 ```
